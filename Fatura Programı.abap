@@ -19,13 +19,12 @@ TYPES: BEGIN OF ty_balance,
        END OF ty_balance.
 
 DATA: lt_balance TYPE TABLE OF ty_balance.
-data: ls_balance type ty_balance.
+DATA: ls_balance type ty_balance.
 
 DATA: gv_subscreen TYPE sy-dynnr.
 DATA: bldat       TYPE bldat.
 DATA: go_alv      TYPE REF TO lcl_alv.
 DATA: gv_file2 type localfile.
-
 DATA: bukrs TYPE bukrs,
       blart TYPE blart,
       dat   TYPE datum,
@@ -49,7 +48,7 @@ TYPES: BEGIN OF ty_excel,
 
 TYPES: BEGIN OF ty_outtab.
         INCLUDE TYPE zfat.
-TYPES:  style TYPE lvc_t_styl,
+TYPES: style   TYPE lvc_t_styl,
        END OF ty_outtab.
 
 DATA: rb1 TYPE char1,
@@ -93,7 +92,6 @@ CLASS lcl_alv DEFINITION.
           go_grd      TYPE REF TO cl_gui_alv_grid,
           gt_fct      TYPE lvc_t_fcat,
           gs_lay      TYPE lvc_s_layo,
-        go_dyndoc    TYPE REF TO cl_dd_document, " Hata: LO_DYNDOC unknown çözümü
           go_cont_logo TYPE REF TO cl_gui_container.
     TYPES: BEGIN OF ty_mess_pop,
              statu TYPE icon_d, hata TYPE bapi_msg,
@@ -115,9 +113,9 @@ INITIALIZATION.
 perform set_ini.
 
 
-
 START-OF-SELECTION.
   gv_subscreen = '0101'.
+
   CALL SCREEN 100.
 
 FORM z_excel.
@@ -142,9 +140,8 @@ FORM z_excel.
 
   IF go_alv IS NOT BOUND.
     go_alv = lcl_alv=>create( i_str = 'ZFAT' ).
-  ENDIF.
   " ---------------------------
-
+    ENDIF.
   LOOP AT lt_excel INTO ls_excel.
     AUTHORITY-CHECK OBJECT 'F_BKPF_BUK'
       ID 'BUKRS' FIELD ls_excel-bukrs
@@ -167,13 +164,17 @@ FORM z_excel.
     lv_monat_bdc = ls_excel-monat.
     WRITE ls_excel-waers TO lv_waers_bdc.
     lv_waers_bdc = ls_excel-waers.
-      WRITE ls_excel-amo TO lv_amo_bdc.
+    WRITE ls_excel-amo TO lv_amo_bdc.
     CONDENSE lv_amo_bdc NO-GAPS.
     WRITE ls_excel-newko TO lv_newko_bdc.
     lv_newko_bdc = ls_excel-newko.
     WRITE ls_excel-newk2 TO lv_newk2_bdc.
     lv_newk2_bdc = ls_excel-newk2.
 
+    IF ls_excel-amo CN '0123456789., '.
+       MESSAGE |{ sy-tabix }. satırın tutar değeri sayısal değil| TYPE 'I' DISPLAY LIKE 'E'.
+       CONTINUE.
+    ENDIF.
 
        CALL FUNCTION 'ZF_02'
       EXPORTING
@@ -220,6 +221,7 @@ FORM z_excel.
                   ls_zfat-uname = sy-uname.
                   ls_zfat-cpudt = sy-datum.
                   ls_zfat-cputm = sy-uzeit.
+
                   IF ls_zfat-gjahr ne '2026'.
                       MESSAGE 'Mali yıl 2026dan önce olamaz' type 'I'.
                       CONTINUE.
@@ -248,7 +250,7 @@ IF lt_messtab IS NOT INITIAL.
             WITH ls_bdc_msg-msgv1 ls_bdc_msg-msgv2 ls_bdc_msg-msgv3 ls_bdc_msg-msgv4
             INTO lv_msg_text.
 
-    ls_display_mess-statu = icon_led_red. " Hata ikonu
+    ls_display_mess-statu = icon_led_red.
     ls_display_mess-hata  = lv_msg_text.
     APPEND ls_display_mess TO lt_display_mess.
   ENDLOOP.
@@ -258,10 +260,6 @@ IF lt_messtab IS NOT INITIAL.
   ENDIF.
 ENDIF.
 
-IF go_alv IS NOT BOUND.
-    go_alv = lcl_alv=>create( i_str = 'ZFAT' ).
-  ENDIF.
-
   go_alv->get_data( ).
   CALL SCREEN 103.
 
@@ -269,7 +267,8 @@ ENDFORM.
 
 CLASS lcl_eh_head IMPLEMENTATION.
   METHOD constructor.
-    grid = i_grid. rpt_ref = i_rpt.
+    grid = i_grid.
+    rpt_ref = i_rpt.
     SET HANDLER on_toolbar FOR grid.
     SET HANDLER on_user_command FOR grid.
     SET HANDLER on_hotspot_click FOR grid.
@@ -295,19 +294,23 @@ CLASS lcl_eh_head IMPLEMENTATION.
   ENDMETHOD.
 
 METHOD on_user_command.
-  FIELD-SYMBOLS <lt_outtab> TYPE INDEX TABLE.
-  DATA: lt_messtab_alv TYPE TABLE OF bdcmsgcoll,
-        lv_subrc_alv   TYPE sy-subrc,
-        ls_zfat_old    TYPE zfat,
-        ls_zfat        TYPE zfat,
-        lv_dat_bdc     TYPE bdc_fval,
-        lv_amo_bdc     TYPE bdc_fval.
+    FIELD-SYMBOLS: <lt_outtab> TYPE INDEX TABLE.
+    DATA: lt_messtab_alv TYPE TABLE OF bdcmsgcoll,
+          lv_subrc_alv   TYPE sy-subrc,
+          ls_zfat_old    TYPE zfat,
+          ls_zfat        TYPE zfat,
+          lv_dat_bdc     TYPE bdc_fval,
+          lv_amo_bdc     TYPE bdc_fval,
+          lt_rows        TYPE lvc_t_row,
+          ls_row         TYPE lvc_s_row,
+          lt_fields      TYPE TABLE OF sval,
+          ls_field       TYPE sval.
 
-data: lt_rows type lvc_t_row,
-      ls_row type lvc_s_row.
+    ASSIGN rpt_ref->mt_outtab->* TO <lt_outtab>.
 
-  CASE e_ucomm.
-   WHEN 'DB'.
+    CASE e_ucomm.
+
+      WHEN 'DB'.
       go_alv->go_grd->check_changed_data( ).
       ASSIGN go_alv->mt_outtab->* TO <lt_outtab>.
 
@@ -321,7 +324,6 @@ data: lt_rows type lvc_t_row,
       LOOP AT lt_rows INTO ls_row.
         READ TABLE <lt_outtab> ASSIGNING FIELD-SYMBOL(<ls_data>) INDEX ls_row-index.
         CHECK sy-subrc = 0.
-
         MOVE-CORRESPONDING <ls_data> TO ls_zfat.
 
         SELECT SINGLE * FROM zfat INTO ls_zfat_old
@@ -330,14 +332,11 @@ data: lt_rows type lvc_t_row,
             AND gjahr = ls_zfat-gjahr.
 
         IF ls_zfat <> ls_zfat_old OR ls_zfat-belnr IS INITIAL.
-
           CLEAR: lv_dat_bdc, lv_amo_bdc.
-
           WRITE ls_zfat-cpudt TO lv_dat_bdc.
           CONDENSE lv_dat_bdc NO-GAPS.
           WRITE ls_zfat-amo TO lv_amo_bdc.
           CONDENSE lv_amo_bdc NO-GAPS.
-
           CALL FUNCTION 'ZF_02'
             EXPORTING
               ctu       = 'X'
@@ -358,7 +357,6 @@ data: lt_rows type lvc_t_row,
               subrc     = lv_subrc_alv
             TABLES
               messtab   = lt_messtab_alv.
-
           IF lv_subrc_alv = 0.
             READ TABLE lt_messtab_alv INTO DATA(ls_msg)
                  WITH KEY msgid = 'F5' msgnr = '312'.
@@ -368,7 +366,6 @@ data: lt_rows type lvc_t_row,
               ls_zfat-cpudt = sy-datum.
               ls_zfat-cputm = sy-uzeit.
               MODIFY zfat FROM ls_zfat.
-
               MOVE-CORRESPONDING ls_zfat TO <ls_data>.
             ENDIF.
           ENDIF.
@@ -376,59 +373,40 @@ data: lt_rows type lvc_t_row,
 
         CLEAR: lt_messtab_alv, lv_subrc_alv, ls_zfat, ls_zfat_old.
       ENDLOOP.
-
       COMMIT WORK AND WAIT.
-
       go_alv->go_grd->refresh_table_display( ).
-
       MESSAGE 'İşlem başarıyla tamamlandı ve ZFAT tablosu güncellendi.' TYPE 'S'.
 
-      when 'ADD'.
-        assign go_alv->mt_outtab->* to <lt_outtab>.
-        append INITIAL LINE TO <lt_outtab> ASSIGNING FIELD-SYMBOL(<ls_new>).
-        assign COMPONENT 'NEWKO' of STRUCTURE <ls_new> to FIELD-SYMBOL(<lv_newko>).
-        IF <lv_newko> is ASSIGNED.
-          <lv_newko> = '100000000'.
+      WHEN 'ADD'.
+        APPEND INITIAL LINE TO <lt_outtab> ASSIGNING FIELD-SYMBOL(<ls_new>).
+        ASSIGN COMPONENT 'NEWKO' OF STRUCTURE <ls_new> TO FIELD-SYMBOL(<lv_newko>).
+        IF <lv_newko> IS ASSIGNED.
+         <lv_newko> = '100000000'.
         ENDIF.
-        assign COMPONENT 'NEWK2' OF STRUCTURE <ls_new> to FIELD-SYMBOL(<lv_newk2>).
-        IF <lv_newk2> is ASSIGNED.
-          <lv_newk2> = '100000000'.
+
+        rpt_ref->go_grd->refresh_table_display( ).
+
+      WHEN 'DELETE'.
+        rpt_ref->go_grd->get_selected_rows( IMPORTING et_index_rows = lt_rows ).
+        IF lt_rows IS INITIAL.
+          MESSAGE 'Lütfen satır seçiniz' TYPE 'E'. RETURN.
         ENDIF.
-        go_alv->go_grd->refresh_table_display( ).
-      when 'DELETE'.
-        go_alv->go_grd->get_selected_rows(
-          IMPORTING
-            et_index_rows =      LT_ROWS
-        ).
 
-  IF lt_rows is initial.
-    message 'Lütfen satır seçiniz' type 'E'.
-    return.
-  ENDIF.
-assign go_alv->mt_outtab->* to <lt_outtab>.
-sort lt_rows by index DESCENDING.
-
-  LOOP AT lt_rows into ls_row.
-    READ TABLE <lt_outtab> ASSIGNING FIELD-SYMBOL(<ls_del_row>) index ls_row-index.
-    IF sy-subrc eq 0.
-      MOVE-CORRESPONDING <ls_del_row> to ls_zfat.
-    ENDIF.
-
-    delete from zfat where bukrs eq ls_zfat-bukrs
-                     and belnr eq ls_zfat-belnr.
-
-  IF sy-subrc eq 0.
-    delete <lt_outtab> index ls_row-index.
-  ENDIF.
-  ENDLOOP.
-  COMMIT WORK and wait.
-  message 'Kayıtlar silindi' type 'S'.
-
-      go_alv->go_grd->refresh_table_display( ).
-  ENDCASE.
-ENDMETHOD.
+        SORT lt_rows BY index DESCENDING.
+        LOOP AT lt_rows INTO ls_row.
+          READ TABLE <lt_outtab> ASSIGNING FIELD-SYMBOL(<ls_del>) INDEX ls_row-index.
+          IF sy-subrc = 0.
+            MOVE-CORRESPONDING <ls_del> TO ls_zfat.
+            DELETE FROM zfat WHERE bukrs = ls_zfat-bukrs AND belnr = ls_zfat-belnr.
+            DELETE <lt_outtab> INDEX ls_row-index.
+          ENDIF.
+        ENDLOOP.
+        COMMIT WORK AND WAIT.
+        rpt_ref->go_grd->refresh_table_display( ).
+    ENDCASE.
+  ENDMETHOD.
 METHOD on_hotspot_click.
-    DATA: ls_row_data TYPE zfat.
+    DATA: ls_row_data TYPE ty_outtab.
     DATA: lr_data     TYPE REF TO data.
 
     lr_data = rpt_ref->mt_outtab.
@@ -442,20 +420,19 @@ METHOD on_hotspot_click.
           READ TABLE <lt_table> INDEX es_row_no-row_id INTO ls_row_data.
 
           IF sy-subrc = 0 AND ls_row_data-belnr IS NOT INITIAL.
-
             SET PARAMETER ID 'BLN' FIELD ls_row_data-belnr.
             SET PARAMETER ID 'BUK' FIELD ls_row_data-bukrs.
             SET PARAMETER ID 'GJR' FIELD ls_row_data-gjahr.
-
             CALL TRANSACTION 'FB03' AND SKIP FIRST SCREEN.
           ENDIF.
+
         ENDIF.
        when 'LIFNR'.
          IF es_row_no-row_id is not initial.
            assign lr_data->* to <lt_table>.
            read table <lt_table> index es_row_no-row_id into ls_row_data.
 
-           IF sy-subrc eq 0.
+           IF sy-subrc eq 0 and ls_row_data-lifnr is NOT INITIAL and ls_row_data-lifnr <> '0000000000'.
              set PARAMETER ID 'BUK' FIELD ls_row_data-bukrs.
              SET PARAMETER ID 'LIF' FIELD ls_row_data-lifnr.
              call TRANSACTION 'FBL1N' and SKIP FIRST SCREEN.
@@ -464,24 +441,22 @@ METHOD on_hotspot_click.
     ENDCASE.
   ENDMETHOD.
 
-  METHOD on_button_click. ENDMETHOD.
+METHOD on_button_click. ENDMETHOD.
 
 METHOD on_top_of_page.
     CALL METHOD e_dyndoc_id->add_picture EXPORTING picture_id = 'FATURALAB'.
 ENDMETHOD.
-
 ENDCLASS.
 CLASS lcl_alv IMPLEMENTATION.
   METHOD constructor.
     mv_tabname = i_str.
-    CREATE DATA mt_outtab TYPE STANDARD TABLE OF (mv_tabname) WITH EMPTY KEY.
+    CREATE DATA mt_outtab TYPE STANDARD TABLE OF ty_outtab WITH EMPTY KEY.
   ENDMETHOD.
-
 
   METHOD create.
     DATA(lo_alv) = NEW lcl_alv( i_str = i_str ).
     DATA: lo_cont TYPE REF TO cl_gui_custom_container.
-     DATA go_logo TYPE REF TO cl_gui_picture.
+    DATA go_logo TYPE REF TO cl_gui_picture.
     CREATE OBJECT lo_cont EXPORTING container_name = 'CUSTOM'.
      DATA(lo_splitter) = NEW cl_gui_splitter_container( parent = lo_cont rows = 2 columns = 1 ).
       DATA(lo_cont_logo) = lo_splitter->get_container( row = 1 column = 1 ).
@@ -492,6 +467,7 @@ CLASS lcl_alv IMPLEMENTATION.
       EXPORTING
         parent = lo_cont_logo.
     DATA(lv_url) = lo_alv->get_logo_url( ).
+
 
     CALL METHOD go_logo->load_picture_from_url
       EXPORTING
@@ -505,26 +481,33 @@ CLASS lcl_alv IMPLEMENTATION.
   ENDMETHOD.
 METHOD get_data.
   FIELD-SYMBOLS <lt_data> TYPE INDEX TABLE.
+
   DATA: lt_style TYPE lvc_t_styl,
         ls_style TYPE lvc_s_styl.
+  data: lt_color type lvc_t_scol,
+        ls_color type lvc_s_scol.
 
   ASSIGN mt_outtab->* TO <lt_data>.
 
   SELECT * FROM (mv_tabname)
     INTO CORRESPONDING FIELDS OF TABLE @<lt_data>
-    ORDER BY belnr DESCENDING.
+*    ORDER BY belnr DESCENDING.
+    order by CPUDT DESCENDING.
+
 
   LOOP AT <lt_data> ASSIGNING FIELD-SYMBOL(<ls_row>).
     CLEAR lt_style.
-
+    clear: lt_color.
     ASSIGN COMPONENT 'BUKRS' OF STRUCTURE <ls_row> TO FIELD-SYMBOL(<lv_bukrs>).
     ASSIGN COMPONENT 'LIFNR' OF STRUCTURE <ls_row> to FIELD-SYMBOL(<lv_lifnr>).
+    ASSIGN COMPONENT 'AMO' OF STRUCTURE <ls_row> to FIELD-SYMBOL(<lv_amo>).
+
     IF <lv_bukrs> IS ASSIGNED.
       AUTHORITY-CHECK OBJECT 'F_BKPF_BUK'
         ID 'BUKRS' FIELD <lv_bukrs>
         ID 'ACTVT' FIELD '02'.
 
-      IF sy-subrc <> 0.
+    IF sy-subrc <> 0.
         ls_style-style = cl_gui_alv_grid=>mc_style_disabled.
         ls_style-fieldname = 'BUKRS'. APPEND ls_style TO lt_style.
         ls_style-fieldname = 'AMO'.   APPEND ls_style TO lt_style.
@@ -536,34 +519,48 @@ METHOD get_data.
     IF <lt_row_style> IS ASSIGNED.
       <lt_row_style> = lt_style.
     ENDIF.
+
   ENDLOOP.
 ENDMETHOD.
 
   METHOD cre_fct.
+    DATA: gs_fct type lvc_s_fcat.
     CALL FUNCTION 'LVC_FIELDCATALOG_MERGE'
       EXPORTING i_structure_name = mv_tabname
       CHANGING ct_fieldcat = gt_fct
       EXCEPTIONS OTHERS = 3.
-    me->set_alv_hot( 'BELNR' ).
-    me->set_alv_hot( 'LIFNR' ).
+
+
     LOOP AT gt_fct REFERENCE INTO DATA(lr_fct).
     CASE lr_fct->fieldname.
-      WHEN 'BUKRS' OR 'BLART' OR 'MONAT' OR 'WAERS' OR 'AMO' OR 'BLDAT'.
+      WHEN  'BLART' OR 'MONAT' OR 'WAERS' OR 'AMO' OR 'BLDAT'.
         lr_fct->edit = abap_true.
       WHEN 'BELNR'.
         lr_fct->hotspot = abap_true.
       when 'GJAHR'.
         lr_fct->col_opt = abap_true.
+        lr_fct->scrtext_l = 'Mali Yıl Alanı'.
+      when 'AMO'.
+        lr_fct->do_sum = abap_true.
+        lr_fct->cfieldname = 'WAERS'.
+      when 'LIFNR'.
+        lr_fct->hotspot = abap_true.
+      when 'NEWKO'.
+        lr_fct->no_out = abap_true.
+      when 'NEWK2'.
+        lr_fct->no_out = abap_true.
     ENDCASE.
-  ENDLOOP.
+    ENDLOOP.
 
   ENDMETHOD.
+
   METHOD cre_lay.
   gs_lay = VALUE #(
     zebra      = 'X'
     sel_mode   = 'A'
     cwidth_opt = 'X'
     stylefname = 'STYLE'
+    totals_bef = 'X'
   ).
   ENDMETHOD.
 
@@ -572,6 +569,11 @@ ENDMETHOD.
     APPEND cl_gui_alv_grid=>mc_fc_loc_insert_row to lt_excluding.
     append cl_gui_alv_grid=>mc_fc_loc_delete_row to lt_excluding.
     APPEND cl_gui_alv_grid=>mc_fc_help to lt_excluding.
+    append cl_gui_alv_grid=>mc_fc_call_xml_export to lt_excluding.
+    append cl_gui_alv_grid=>mc_fc_loc_copy_row to lt_excluding.
+    append cl_gui_alv_grid=>mc_fc_loc_cut to lt_excluding.
+    append cl_gui_alv_grid=>mc_fc_print to lt_excluding.
+    APPEND cl_gui_alv_grid=>mc_fc_loc_copy to lt_excluding.
     FIELD-SYMBOLS <lt_data> TYPE INDEX TABLE.
     ASSIGN mt_outtab->* TO <lt_data>.
     go_grd->set_table_for_first_display(
@@ -782,11 +784,12 @@ FORM z_excel_vendor.
 
 ENDFORM.
 FORM get_balance_data.
+  clear: lt_balance.
   SELECT b~lifnr, l~name1, b~shkzg, b~wrbtr, b~waers
-    FROM bsik AS b
+    FROM bsik_view as b
     INNER JOIN lfa1 AS l ON b~lifnr = l~lifnr
-    INTO TABLE @DATA(lt_items)
-    WHERE b~lifnr IN @s_lifnr.
+    WHERE b~lifnr IN @s_lifnr
+    INTO TABLE @DATA(lt_items).
 
   FIELD-SYMBOLS: <fs_balance> LIKE LINE OF lt_balance.
   DATA: ls_color TYPE lvc_s_scol.
@@ -794,9 +797,11 @@ FORM get_balance_data.
   LOOP AT lt_items INTO DATA(ls_item).
     READ TABLE lt_balance ASSIGNING <fs_balance> WITH KEY lifnr = ls_item-lifnr.
     IF sy-subrc <> 0.
+
       APPEND VALUE #( lifnr = ls_item-lifnr
                       name1 = ls_item-name1
                       waers = ls_item-waers ) TO lt_balance ASSIGNING <fs_balance>.
+
     ENDIF.
 
     IF ls_item-shkzg = 'H'.
@@ -805,11 +810,12 @@ FORM get_balance_data.
       <fs_balance>-t_cikti = <fs_balance>-t_cikti + ls_item-wrbtr.
     ENDIF.
   ENDLOOP.
-
+  clear: <fs_balance>.
   LOOP AT lt_balance ASSIGNING <fs_balance>.
+
     <fs_balance>-bakiye = <fs_balance>-t_girdi - <fs_balance>-t_cikti.
 
-    REFRESH <fs_balance>-t_color.
+    CLEAR <fs_balance>-t_color.
     ls_color-fname = 'BAKIYE'.
 
     IF <fs_balance>-bakiye > 0.
@@ -820,8 +826,10 @@ FORM get_balance_data.
       ls_color-color-col = 6.
     ENDIF.
     APPEND ls_color TO <fs_balance>-t_color.
+
   ENDLOOP.
 ENDFORM.
+
 FORM display_balance_report.
   PERFORM get_balance_data.
 
@@ -832,7 +840,7 @@ FORM display_balance_report.
   ls_layo-ctab_fname = 'T_COLOR'.
   ls_layo-cwidth_opt = 'X'.
 
-  DEFINE m_append_fcat.
+  DEFINE bal_fcat.
     CLEAR ls_fcat.
     ls_fcat-fieldname = &1.
     ls_fcat-scrtext_m = &2.
@@ -840,12 +848,12 @@ FORM display_balance_report.
     APPEND ls_fcat TO lt_fcat.
   END-OF-DEFINITION.
 
-  m_append_fcat 'LIFNR'   'Satıcı No'     ' '.
-  m_append_fcat 'NAME1'   'Satıcı Adı'    ' '.
-  m_append_fcat 'T_GIRDI' 'Toplam Alacak' 'X'.
-  m_append_fcat 'T_CIKTI' 'Toplam Borç'   'X'.
-  m_append_fcat 'BAKIYE'  'Net Bakiye'    'X'.
-  m_append_fcat 'WAERS'   'Para Birimi'   ' '.
+  bal_fcat 'LIFNR'   'Satıcı No'     ' '.
+  bal_fcat 'NAME1'   'Satıcı Adı'    ' '.
+  bal_fcat 'T_GIRDI' 'Toplam Alacak' 'X'.
+  bal_fcat 'T_CIKTI' 'Toplam Borç'   'X'.
+  bal_fcat 'BAKIYE'  'Net Bakiye'    'X'.
+  bal_fcat 'WAERS'   'Para Birimi'   ' '.
 
   CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY_LVC'
     EXPORTING
@@ -857,9 +865,12 @@ FORM display_balance_report.
     EXCEPTIONS
       program_error   = 1
       OTHERS          = 2.
+
 ENDFORM.
 MODULE status_0100 OUTPUT.
+
   SET PF-STATUS '100'.
+  PERFORM bukrs.
   IF rb2 = 'X'.
     gv_subscreen = '0101'.
   ELSE.
@@ -884,100 +895,107 @@ MODULE user_command_0100 INPUT.
       CALL FUNCTION 'F4_FILENAME' IMPORTING file_name = gv_file2.
       IF gv_file2 IS NOT INITIAL. PERFORM z_excel_vendor. ENDIF.
 
- WHEN 'SAVE'.
-  DATA: lv_dat_str   TYPE bdc_fval,
-        lv_amo_str   TYPE bdc_fval,
-        lv_bukrs_str TYPE bdc_fval,
-        lv_monat_str TYPE bdc_fval,
-        lv_waers_str TYPE bdc_fval,
-        lv_newko_str TYPE bdc_fval,
-        lv_newk2_str TYPE bdc_fval,
-        lv_blart_str TYPE bdc_fval,
-        lv_belnr     TYPE belnr_d,
-        ls_zfat      TYPE zfat,
-        lt_all_errors TYPE lcl_alv=>ty_mess_pop_t,
-        lv_msg_text(200) TYPE c.
+    WHEN 'SAVE'.
+     DATA: lv_dat_str   TYPE bdc_fval,
+           lv_amo_str   TYPE bdc_fval,
+           lv_bukrs_str TYPE bdc_fval,
+           lv_monat_str TYPE bdc_fval,
+           lv_waers_str TYPE bdc_fval,
+           lv_newko_str TYPE bdc_fval,
+           lv_newk2_str TYPE bdc_fval,
+           lv_blart_str TYPE bdc_fval,
+           lv_belnr     TYPE belnr_d,
+           ls_zfat      TYPE zfat,
+           lt_all_errors TYPE lcl_alv=>ty_mess_pop_t,
+           lv_msg_text(200) TYPE c.
 
-  IF waers IS INITIAL OR amo IS INITIAL OR bldat IS INITIAL.
-    MESSAGE 'Lütfen tarih, para birimi ve tutarı giriniz!' TYPE 'S' DISPLAY LIKE 'E'.
-    RETURN.
-  ENDIF.
-
-  CALL FUNCTION 'CONVERT_DATE_TO_EXTERNAL'
-    EXPORTING
-      date_internal = bldat
-    IMPORTING
-      date_external = lv_dat_str.
-
-  lv_bukrs_str = bukrs.
-  lv_blart_str = blart.
-  lv_waers_str = waers.
-  lv_monat_str = monat.
-  lv_newko_str = newko.
-  lv_newk2_str = newk2.
-
-  WRITE amo TO lv_amo_str CURRENCY waers.
-  CONDENSE lv_amo_str NO-GAPS.
-
-  CLEAR lt_messtab.
-  CALL FUNCTION 'ZF_02'
-    EXPORTING
-      ctu       = 'X'
-      mode      = 'N'
-      update    = 'S'
-      bldat_001 = lv_dat_str
-      blart_002 = lv_blart_str
-      bukrs_003 = lv_bukrs_str
-      budat_004 = lv_dat_str
-      monat_005 = lv_monat_str
-      waers_006 = lv_waers_str
-      wwert_007 = lv_dat_str
-      newko_010 = lv_newko_str
-      wrbtr_011 = lv_amo_str
-      newko_013 = lv_newk2_str
-      wrbtr_015 = lv_amo_str
-      wrbtr_018 = lv_amo_str
-    IMPORTING
-      subrc     = lv_subrc
-    TABLES
-      messtab   = lt_messtab.
-
-  IF lv_subrc = 0.
-    READ TABLE lt_messtab INTO DATA(ls_msg) WITH KEY msgid = 'F5' msgnr = '312'.
-    IF sy-subrc = 0.
-      lv_belnr = ls_msg-msgv1.
-
-      IF lv_belnr IS NOT INITIAL.
-        CLEAR ls_zfat.
-        ls_zfat = VALUE #(
-          mandt = sy-mandt
-          bukrs = lv_bukrs_str
-          belnr = lv_belnr
-          gjahr = bldat(4)
-          blart = lv_blart_str
-          monat = lv_monat_str
-          waers = lv_waers_str
-          amo   = amo
-          uname = sy-uname
-          cpudt = sy-datum
-          lifnr = lv_newko_str
-          cputm = sy-uzeit
-        ).
-
-        MODIFY zfat FROM ls_zfat.
-        COMMIT WORK AND WAIT.
-
-        MESSAGE 'Kayıt başarıyla oluşturuldu: ' && lv_belnr TYPE 'S'.
-
-        IF go_alv IS NOT BOUND.
-          go_alv = lcl_alv=>create( i_str = 'ZFAT' ).
-        ELSE.
-          go_alv->get_data( ).
-        ENDIF.
-        CALL SCREEN 103.
+      IF waers IS INITIAL OR amo IS INITIAL OR bldat IS INITIAL.
+        MESSAGE 'Lütfen tarih, para birimi ve tutarı giriniz!' TYPE 'S' DISPLAY LIKE 'E'.
+        RETURN.
       ENDIF.
-    ENDIF.
-  ELSE.
+
+      CALL FUNCTION 'CONVERT_DATE_TO_EXTERNAL'
+        EXPORTING
+          date_internal = bldat
+        IMPORTING
+          date_external = lv_dat_bdc.
+
+        lv_bukrs_bdc = bukrs.
+        lv_blart_bdc = blart.
+        lv_waers_bdc = waers.
+        lv_monat_bdc = monat.
+        lv_newko_bdc = newko.
+        lv_newk2_bdc = newk2.
+
+
+
+        WRITE amo TO lv_amo_bdc CURRENCY waers.
+        CONDENSE lv_amo_bdc NO-GAPS.
+
+        CLEAR lt_messtab.
+         CALL FUNCTION 'ZF2_VENDOR2'
+       EXPORTING
+         ctu       = 'X'
+         mode      = 'N'
+         update    = 'S'
+         nodata    = '/'
+         bldat_001 = lv_dat_bdc
+         blart_002 = lv_blart_bdc
+         bukrs_003 = lv_bukrs_bdc
+         budat_004 = lv_dat_bdc
+         monat_005 = lv_monat_bdc
+         waers_006 = lv_waers_bdc
+         newko_009 = lv_newko_bdc
+         wrbtr_010 = lv_amo_bdc
+         newko_017 = lv_newk2_bdc
+         wrbtr_013 = lv_amo_bdc
+         wrbtr_018 = lv_amo_bdc
+         wrbtr_021 = lv_amo_bdc
+         zfbdt_012 = lv_dat_bdc
+         zfbdt_015 = lv_dat_bdc
+         zfbdt_020 = lv_dat_bdc
+         zfbdt_023 = lv_dat_bdc
+       IMPORTING
+         subrc     = lv_subrc
+       TABLES
+         messtab   = lt_messtab.
+
+    IF lv_subrc = 0.
+      READ TABLE lt_messtab INTO DATA(ls_msg) WITH KEY msgid = 'F5' msgnr = '312'.
+      IF sy-subrc = 0.
+        lv_belnr = ls_msg-msgv1.
+
+        IF lv_belnr IS NOT INITIAL.
+          CLEAR ls_zfat.
+          ls_zfat = VALUE #(
+            mandt = sy-mandt
+            bukrs = lv_bukrs_bdc
+            belnr = lv_belnr
+            gjahr = bldat(4)
+            blart = lv_blart_bdc
+            monat = lv_monat_bdc
+            waers = lv_waers_bdc
+            amo   = amo
+            uname = sy-uname
+            cpudt = sy-datum
+            lifnr = lv_newko_bdc
+            cputm = sy-uzeit
+          ).
+
+          MODIFY zfat FROM ls_zfat.
+          COMMIT WORK AND WAIT.
+
+          MESSAGE 'Kayıt başarıyla oluşturuldu: ' && lv_belnr TYPE 'S'.
+
+          IF go_alv IS NOT BOUND.
+            go_alv = lcl_alv=>create( i_str = 'ZFAT' ).
+          ELSE.
+            go_alv->get_data( ).
+          ENDIF.
+          CALL SCREEN 103.
+        ENDIF.
+      ENDIF.
+    ELSE.
     LOOP AT lt_messtab INTO DATA(ls_bdc_msg) WHERE msgtyp = 'E' OR msgtyp = 'A'.
       CLEAR lv_msg_text.
       MESSAGE ID     ls_bdc_msg-msgid
@@ -1023,7 +1041,6 @@ CALL FUNCTION 'F4IF_FIELD_VALUE_REQUEST'
       inconsistent_help = 3
       no_values_found   = 4
       others            = 5.
-
 ENDMODULE.
 MODULE f4_blart_help INPUT.
   CALL FUNCTION 'F4IF_FIELD_VALUE_REQUEST'
@@ -1035,6 +1052,52 @@ MODULE f4_blart_help INPUT.
       dynprofield       = 'BLART'
     EXCEPTIONS
       others            = 1.
+ENDMODULE.
+module f4_newko_help INPUT.
+CALL FUNCTION 'F4IF_FIELD_VALUE_REQUEST'
+  EXPORTING
+    tabname                   = 'LFA1'
+    fieldname                 = 'LIFNR'
+*   SEARCHHELP                = ' '
+*   SHLPPARAM                 = ' '
+   DYNPPROG                  = sy-repid
+   DYNPNR                    = sy-dynnr
+   DYNPROFIELD               = 'NEWKO'
+*   STEPL                     = 0
+*   VALUE                     = ' '
+*   MULTIPLE_CHOICE           = ' '
+*   DISPLAY                   = ' '
+*   SUPPRESS_RECORDLIST       = ' '
+*   CALLBACK_PROGRAM          = ' '
+*   CALLBACK_FORM             = ' '
+*   CALLBACK_METHOD           =
+*   SELECTION_SCREEN          = ' '
+* IMPORTING
+*   USER_RESET                =
+* TABLES
+*   RETURN_TAB                =
+* EXCEPTIONS
+*   FIELD_NOT_FOUND           = 1
+*   NO_HELP_FOR_FIELD         = 2
+*   INCONSISTENT_HELP         = 3
+*   NO_VALUES_FOUND           = 4
+*   OTHERS                    = 5
+          .
+IF sy-subrc <> 0.
+* Implement suitable error handling here
+ENDIF.
+
+ENDMODULE.
+MODULE f4_newk2_help INPUT.
+
+CALL FUNCTION 'F4IF_FIELD_VALUE_REQUEST'
+  EXPORTING
+   tabname                   = 'LFA1'
+   fieldname                 = 'LIFNR'
+   DYNPPROG                  = sy-repid
+   DYNPNR                    = sy-dynnr
+   DYNPROFIELD               = 'NEWK2'.
+
 ENDMODULE.
 MODULE f4_waers_help INPUT.
   CALL FUNCTION 'F4IF_FIELD_VALUE_REQUEST'
@@ -1056,7 +1119,7 @@ call method yflb_cl_faturalab=>get_user_comp_from_authority
   EXCEPTIONS
     no_authority = 1
     others       = 2
-  .
+ .
 IF SY-SUBRC <> 0.
 message i014(yflb).
 leave program.
@@ -1067,9 +1130,11 @@ FORM bukrs .
 data: gt_bukrs type vrm_values.
 data: gwa_bukrs type vrm_value.
 data: name type vrm_id.
+
   REFRESH gt_bukrs.
   CLEAR: gwa_bukrs, gt_bukrs[].
-  name = 'p_bukrs'.
+  name = 'BUKRS'.
+
   SELECT * FROM ust12 INTO TABLE lt_ust12 WHERE objct = 'YFLB_COMP'.
 
   LOOP AT lt_ust12 WHERE von NE '*' .
@@ -1077,6 +1142,7 @@ data: name type vrm_id.
     gwa_bukrs-text = lt_ust12-von.
     COLLECT gwa_bukrs INTO gt_bukrs.
   ENDLOOP.
+
   CALL FUNCTION 'VRM_SET_VALUES'
     EXPORTING
       id              = name
@@ -1084,7 +1150,9 @@ data: name type vrm_id.
     EXCEPTIONS
       id_illegal_name = 1
       OTHERS          = 2.
+
 ENDFORM.
+
 *&---------------------------------------------------------------------*
 *& Module STATUS_0103 OUTPUT
 *&---------------------------------------------------------------------*
