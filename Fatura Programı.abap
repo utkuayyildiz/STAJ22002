@@ -49,6 +49,7 @@ TYPES: BEGIN OF ty_excel,
 TYPES: BEGIN OF ty_outtab.
         INCLUDE TYPE zfat.
 TYPES: style   TYPE lvc_t_styl,
+       kdv type bseg-wrbtr,
        END OF ty_outtab.
 
 DATA: rb1 TYPE char1,
@@ -175,7 +176,6 @@ FORM z_excel.
        MESSAGE |{ sy-tabix }. satırın tutar değeri sayısal değil| TYPE 'I' DISPLAY LIKE 'E'.
        CONTINUE.
     ENDIF.
-
        CALL FUNCTION 'ZF_02'
       EXPORTING
         ctu       = 'X'
@@ -222,8 +222,8 @@ FORM z_excel.
                   ls_zfat-cpudt = sy-datum.
                   ls_zfat-cputm = sy-uzeit.
 
-                  IF ls_zfat-gjahr ne '2026'.
-                      MESSAGE 'Mali yıl 2026dan önce olamaz' type 'I'.
+                  IF ls_zfat-gjahr ne sy-datum(4).
+                      MESSAGE |Mali yıl { sy-datum(4) } dan önce olamaz| type 'I'.
                       CONTINUE.
                   ENDIF.
 
@@ -305,11 +305,11 @@ METHOD on_user_command.
           ls_row         TYPE lvc_s_row,
           lt_fields      TYPE TABLE OF sval,
           ls_field       TYPE sval.
+    DATA: lv_belnr         TYPE belnr_d.
+    DATA: lv_line  type i.
 
     ASSIGN rpt_ref->mt_outtab->* TO <lt_outtab>.
-
     CASE e_ucomm.
-
       WHEN 'DB'.
       go_alv->go_grd->check_changed_data( ).
       ASSIGN go_alv->mt_outtab->* TO <lt_outtab>.
@@ -339,6 +339,7 @@ METHOD on_user_command.
           CONDENSE lv_amo_bdc NO-GAPS.
           CALL FUNCTION 'ZF_02'
             EXPORTING
+
               ctu       = 'X'
               mode      = 'N'
               update    = 'S'
@@ -360,11 +361,18 @@ METHOD on_user_command.
           IF lv_subrc_alv = 0.
             READ TABLE lt_messtab_alv INTO DATA(ls_msg)
                  WITH KEY msgid = 'F5' msgnr = '312'.
+            lv_belnr = ls_msg-msgv1.
+
             IF sy-subrc = 0.
+              READ TABLE lt_messtab_alv INTO ls_msg
+                WITH KEY msgid = 'F5' msgnr = '312'.
+                lv_belnr = ls_msg-msgv1.
               ls_zfat-belnr = ls_msg-msgv1.
               ls_zfat-uname = sy-uname.
               ls_zfat-cpudt = sy-datum.
               ls_zfat-cputm = sy-uzeit.
+              ls_zfat-bukrs = 'TR01'.
+              ls_zfat-gjahr = sy-datum(4).
               MODIFY zfat FROM ls_zfat.
               MOVE-CORRESPONDING ls_zfat TO <ls_data>.
             ENDIF.
@@ -385,7 +393,17 @@ METHOD on_user_command.
         ENDIF.
 
         rpt_ref->go_grd->refresh_table_display( ).
+        ASSIGN COMPONENT 'CPUDT' OF STRUCTURE <ls_new> to FIELD-SYMBOL(<lv_cpudt>).
+        IF <lv_cpudt> is ASSIGNED.
+          <lv_cpudt> = sy-datum.
 
+        ENDIF.
+        rpt_ref->go_grd->refresh_table_display( ).
+        ASSIGN COMPONENT 'BUKRS' OF STRUCTURE <ls_new> to FIELD-SYMBOL(<lv_bukrs>).
+        IF <lv_bukrs> is ASSIGNED.
+          <lv_bukrs> = 'TR01'.
+        ENDIF.
+        rpt_ref->go_grd->refresh_table_display( ).
       WHEN 'DELETE'.
         rpt_ref->go_grd->get_selected_rows( IMPORTING et_index_rows = lt_rows ).
         IF lt_rows IS INITIAL.
@@ -438,6 +456,7 @@ METHOD on_hotspot_click.
              call TRANSACTION 'FBL1N' and SKIP FIRST SCREEN.
            ENDIF.
          ENDIF.
+
     ENDCASE.
   ENDMETHOD.
 
@@ -480,12 +499,10 @@ CLASS lcl_alv IMPLEMENTATION.
     e_alv = lo_alv.
   ENDMETHOD.
 METHOD get_data.
-  FIELD-SYMBOLS <lt_data> TYPE INDEX TABLE.
+   FIELD-SYMBOLS <lt_data> TYPE INDEX TABLE.
 
   DATA: lt_style TYPE lvc_t_styl,
         ls_style TYPE lvc_s_styl.
-  data: lt_color type lvc_t_scol,
-        ls_color type lvc_s_scol.
 
   ASSIGN mt_outtab->* TO <lt_data>.
 
@@ -495,9 +512,10 @@ METHOD get_data.
     order by CPUDT DESCENDING.
 
 
+
+
   LOOP AT <lt_data> ASSIGNING FIELD-SYMBOL(<ls_row>).
     CLEAR lt_style.
-    clear: lt_color.
     ASSIGN COMPONENT 'BUKRS' OF STRUCTURE <ls_row> TO FIELD-SYMBOL(<lv_bukrs>).
     ASSIGN COMPONENT 'LIFNR' OF STRUCTURE <ls_row> to FIELD-SYMBOL(<lv_lifnr>).
     ASSIGN COMPONENT 'AMO' OF STRUCTURE <ls_row> to FIELD-SYMBOL(<lv_amo>).
@@ -530,7 +548,6 @@ ENDMETHOD.
       CHANGING ct_fieldcat = gt_fct
       EXCEPTIONS OTHERS = 3.
 
-
     LOOP AT gt_fct REFERENCE INTO DATA(lr_fct).
     CASE lr_fct->fieldname.
       WHEN  'BLART' OR 'MONAT' OR 'WAERS' OR 'AMO' OR 'BLDAT'.
@@ -549,6 +566,8 @@ ENDMETHOD.
         lr_fct->no_out = abap_true.
       when 'NEWK2'.
         lr_fct->no_out = abap_true.
+
+
     ENDCASE.
     ENDLOOP.
 
@@ -817,7 +836,6 @@ FORM get_balance_data.
 
     CLEAR <fs_balance>-t_color.
     ls_color-fname = 'BAKIYE'.
-
     IF <fs_balance>-bakiye > 0.
       ls_color-color-col = 5.
     ELSEIF <fs_balance>-bakiye = 0.
@@ -825,8 +843,6 @@ FORM get_balance_data.
     ELSE.
       ls_color-color-col = 6.
     ENDIF.
-    APPEND ls_color TO <fs_balance>-t_color.
-
   ENDLOOP.
 ENDFORM.
 
