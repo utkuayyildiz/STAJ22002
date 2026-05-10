@@ -49,7 +49,6 @@ TYPES: BEGIN OF ty_excel,
 TYPES: BEGIN OF ty_outtab.
         INCLUDE TYPE zfat.
 TYPES: style   TYPE lvc_t_styl,
-       kdv type bseg-wrbtr,
        END OF ty_outtab.
 
 DATA: rb1 TYPE char1,
